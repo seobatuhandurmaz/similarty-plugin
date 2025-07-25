@@ -10,7 +10,7 @@ app = FastAPI()
 # CORS MIDDLEWARE: Tüm domainlere izin ver
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Gerekirse ["https://www.batuhandurmaz.com"] yap
+    allow_origins=["https://www.batuhandurmaz.com"],  # Gerekirse ["https://www.batuhandurmaz.com"] yap
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
