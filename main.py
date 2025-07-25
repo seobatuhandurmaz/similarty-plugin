@@ -7,16 +7,16 @@ import os
 
 app = FastAPI()
 
-# CORS MIDDLEWARE: Tüm domainlere izin ver
+# CORS MIDDLEWARE – Tüm kaynaklara izin ver
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://www.batuhandurmaz.com"],  # Gerekirse ["https://www.batuhandurmaz.com"] yap
+    allow_origin_regex=".*",  # Tüm domainlere izin verir
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ENV
+# ENV değişkenleri
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
@@ -30,8 +30,7 @@ def root():
 
 @app.get("/related/{slug}")
 def get_related(slug: str, request: Request):
-    domain = request.headers.get("origin", "default")
-    domain = domain.replace("https://", "").replace("http://", "")
+    domain = request.query_params.get("domain", "default")
     
     sim_res = supabase.table("similarities")\
         .select("*")\
@@ -45,10 +44,13 @@ def get_related(slug: str, request: Request):
 
 @app.post("/process")
 def generate_embeddings_and_similarities():
+    # 1. İçerikleri çek
     articles = supabase.table("articles").select("*").execute().data
+
     slugs = []
     vectors = []
 
+    # 2. Embedding üret ve Supabase'e yaz
     for article in articles:
         if article["embedding"] is None:
             res = openai.embeddings.create(
@@ -63,14 +65,15 @@ def generate_embeddings_and_similarities():
         slugs.append(article["slug"])
         vectors.append(article["embedding"])
 
+    # 3. Benzerlik hesapla ve similarities tablosuna yaz
     for i in range(len(slugs)):
         for j in range(i + 1, len(slugs)):
             sim = float(cosine_similarity([vectors[i]], [vectors[j]])[0][0])
             supabase.table("similarities").insert({
                 "source_slug": slugs[i],
                 "target_slug": slugs[j],
-                "domain": "batuhandurmaz.com",  # opsiyonel sabit domain
-                "similarity_score": sim
+                "similarity_score": sim,
+                "domain": os.getenv("DOMAIN", "default")
             }).execute()
 
     return {"message": "Embedding ve benzerlik işlemi tamamlandı"}
