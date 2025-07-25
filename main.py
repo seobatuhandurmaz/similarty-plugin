@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from supabase import create_client
 from openai import OpenAI
 from sklearn.metrics.pairwise import cosine_similarity
@@ -51,3 +52,32 @@ def generate_embeddings_and_similarities():
             }).execute()
 
     return {"message": "Embedding ve benzerlik işlemi tamamlandı"}
+
+@app.get("/related/{slug}")
+def get_related_articles(slug: str):
+    # similarity tablosundan ilgili slug'a ait eşleşmeleri çek
+    sim_res = supabase.table("similarities")\
+        .select("*")\
+        .eq("source_slug", slug)\
+        .order("similarity_score", desc=True)\
+        .limit(5)\
+        .execute()
+    
+    related = []
+
+    for item in sim_res.data:
+        # Hedef slug'a karşılık gelen article'ı çekiyoruz
+        target = supabase.table("articles")\
+            .select("title, slug")\
+            .eq("slug", item["target_slug"])\
+            .limit(1)\
+            .execute()
+
+        if target.data:
+            related.append({
+                "title": target.data[0]["title"],
+                "slug": target.data[0]["slug"],
+                "score": item["similarity_score"]
+            })
+
+    return JSONResponse(content={"related": related})
