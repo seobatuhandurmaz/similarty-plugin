@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from supabase import create_client
 from openai import OpenAI
@@ -19,9 +19,13 @@ def root():
     return {"status": "Semantic Linker API running"}
 
 @app.post("/process")
-def generate_embeddings_and_similarities():
-    # 1. İçerikleri çek
-    articles = supabase.table("articles").select("*").execute().data
+def generate_embeddings_and_similarities(request: Request):
+    # HTTP sorgusundan domain parametresi al
+    domain = request.query_params.get("domain", "default")
+
+    # 1. Bu domaine ait içerikleri al
+    articles = supabase.table("articles").select("*")\
+        .eq("domain", domain).execute().data
 
     slugs = []
     vectors = []
@@ -48,28 +52,34 @@ def generate_embeddings_and_similarities():
             supabase.table("similarities").insert({
                 "source_slug": slugs[i],
                 "target_slug": slugs[j],
-                "similarity_score": sim
+                "similarity_score": sim,
+                "domain": domain
             }).execute()
 
-    return {"message": "Embedding ve benzerlik işlemi tamamlandı"}
+    return {"message": f"{domain} için embedding ve benzerlik işlemi tamamlandı"}
 
 @app.get("/related/{slug}")
-def get_related_articles(slug: str):
-    # similarity tablosundan ilgili slug'a ait eşleşmeleri çek
+def get_related_articles(slug: str, request: Request):
+    # HTTP sorgusundan domain parametresi al
+    domain = request.query_params.get("domain", "default")
+
+    # 1. similarities tablosundan benzerlikleri al
     sim_res = supabase.table("similarities")\
         .select("*")\
         .eq("source_slug", slug)\
+        .eq("domain", domain)\
         .order("similarity_score", desc=True)\
         .limit(5)\
         .execute()
-    
+
     related = []
 
+    # 2. target_slug ile article başlığı çek
     for item in sim_res.data:
-        # Hedef slug'a karşılık gelen article'ı çekiyoruz
         target = supabase.table("articles")\
             .select("title, slug")\
             .eq("slug", item["target_slug"])\
+            .eq("domain", domain)\
             .limit(1)\
             .execute()
 
